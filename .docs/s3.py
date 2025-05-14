@@ -65,7 +65,7 @@ def create_s3_module_diagram():
     
     with Diagram(
         title,
-        filename="s3_module_diagram",
+        filename="diagram",
         outformat="png",
         show=False,
         direction="TB",

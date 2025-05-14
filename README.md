@@ -1,112 +1,167 @@
 # tf-aws-module-template
 
+# AWS S3 Bucket Module
+
+This module creates and configures an S3 bucket with various optional features including:
+
+- Server-side encryption using AWS KMS keys
+- Bucket versioning
+- Lifecycle rules for object transitions and expiration
+- Access control through bucket policies and ACLs
+- Public access blocking
+- Logging configuration
+- Website hosting configuration
+- Cross-region replication
+- Event notifications (Lambda, SNS, SQS)
+
+The module follows AWS best practices & CIS Best Practice Benchmark for S3 bucket security and management.
+
+Use terraform-docs to generate the full documentation:
+
+```bash
+terraform-docs --config .docs/.terraform-docs.yml .
+```
+
+## Diagram:
+
+![Diagram](.config/diagram.png)
+
 <!-- BEGIN_TF_DOCS -->
 
-Template for AWS Terraform Modules
+## Example:
 
-## Overview
+```hcl
+# Example: Basic S3 Bucket Creation with versioning and access logging
+module "basic_s3" {
+  source      = "../.."
+  bucket_name = "example-basic-bucket"
 
-This repository serves as a template for AWS Terraform modules, with built-in GitHub Actions for automatic publishing to S3 and documentation generation.
+  # Enable versioning with MFA delete disabled
+  versioning = {
+    enabled    = true
+    mfa_delete = false
+  }
 
-## Publishing to S3 with GitHub Actions
+  # Configure access logging to a separate logging bucket
+  logging = {
+    target_bucket = "logging-bucket-name"
+    target_prefix = "s3-access-logs/example-basic-bucket/"
+  }
 
-This repository includes a GitHub Actions workflow that automatically packages and publishes the Terraform module to an S3 bucket when a new release is created or manually triggered.
-
-### How the Workflow Works
-
-The workflow (`publish-version.yml`) performs the following steps:
-
-1. Checks out the code
-2. Configures AWS credentials using OIDC authentication
-3. Determines the version to publish
-4. Packages the module into a zip file
-5. Uploads the zip file to an S3 bucket
-
-### Required GitHub Secrets
-
-You must set up the following GitHub Action secrets in your repository:
-
-- `AWS_ACCOUNT_ID`: The AWS account ID where the S3 bucket and IAM role exist
-- `S3_BUCKET_NAME`: The name of the S3 bucket where modules will be published
-
-### How to Set Up GitHub Secrets
-
-1. Navigate to your repository on GitHub
-2. Click on **Settings** > **Secrets and variables** > **Actions**
-3. Click on **New repository secret**
-4. Add each required secret with its appropriate value
-
-### GitHub OIDC Configuration
-
-This workflow uses OIDC for authentication. You must set up an IAM role in AWS:
-
-1. Create an IAM role named `AWS-TF-GITHUB-ROLE` with the following trust policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:YourOrg/YourRepo:*"
-        }
-      }
-    }
-  ]
+  tags = {
+    Environment = "dev"
+    Purpose     = "Example"
+  }
 }
 ```
 
-2. Attach a policy to this role that allows writing to the S3 bucket
+## Inputs
 
-### Manually Triggering the Workflow
+| Name                                                                                       | Description                                                                                                                        | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Default                                                         | Required |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- | :------: |
+| <a name="input_acl"></a> [acl](#input_acl)                                                 | The canned ACL to apply. Defaults to private. (Deprecated, use access_control instead if possible)                                 | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `"private"`                                                     |    no    |
+| <a name="input_bucket_name"></a> [bucket_name](#input_bucket_name)                         | The name of the S3 bucket. Must be globally unique.                                                                                | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | n/a                                                             |   yes    |
+| <a name="input_create_kms_key"></a> [create_kms_key](#input_create_kms_key)                | If true, create a customer managed KMS key for S3 bucket encryption.                                                               | `bool`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `false`                                                         |    no    |
+| <a name="input_encryption"></a> [encryption](#input_encryption)                            | Server-side encryption configuration. If using a customer managed KMS key, this will be set automatically.                         | <pre>object({<br> sse_algorithm = string<br> kms_master_key_id = optional(string)<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `null`                                                          |    no    |
+| <a name="input_force_destroy"></a> [force_destroy](#input_force_destroy)                   | A boolean that indicates all objects should be deleted from the bucket so that the bucket can be destroyed without error.          | `bool`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `false`                                                         |    no    |
+| <a name="input_kms_key_alias"></a> [kms_key_alias](#input_kms_key_alias)                   | Alias for the customer managed KMS key (if created).                                                                               | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `null`                                                          |    no    |
+| <a name="input_kms_key_description"></a> [kms_key_description](#input_kms_key_description) | Description for the customer managed KMS key (if created).                                                                         | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `"KMS key for S3 bucket encryption"`                            |    no    |
+| <a name="input_lifecycle_rules"></a> [lifecycle_rules](#input_lifecycle_rules)             | A list of lifecycle rules for objects in the bucket.                                                                               | <pre>list(object({<br> id = optional(string)<br> enabled = optional(bool, true)<br> prefix = optional(string)<br> tags = optional(map(string))<br> transitions = optional(list(object({<br> days = number<br> storage_class = string<br> })), [])<br> expiration = optional(list(object({<br> days = number<br> })), [])<br> }))</pre>                                                                                                                                                                                                                 | `[]`                                                            |    no    |
+| <a name="input_logging"></a> [logging](#input_logging)                                     | Bucket access logging configuration. When enabled, logs will be delivered to the specified target bucket with the provided prefix. | <pre>object({<br> target_bucket = string<br> target_prefix = optional(string, "")<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `null`                                                          |    no    |
+| <a name="input_notifications"></a> [notifications](#input_notifications)                   | Notification configuration for S3 events.                                                                                          | <pre>object({<br> lambda_functions = optional(list(object({<br> arn = string<br> events = list(string)<br> filter_prefix = optional(string)<br> filter_suffix = optional(string)<br> })), [])<br> topics = optional(list(object({<br> arn = string<br> events = list(string)<br> filter_prefix = optional(string)<br> filter_suffix = optional(string)<br> })), [])<br> queues = optional(list(object({<br> arn = string<br> events = list(string)<br> filter_prefix = optional(string)<br> filter_suffix = optional(string)<br> })), [])<br> })</pre> | `null`                                                          |    no    |
+| <a name="input_policy"></a> [policy](#input_policy)                                        | A valid bucket policy JSON document.                                                                                               | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `null`                                                          |    no    |
+| <a name="input_public_access_block"></a> [public_access_block](#input_public_access_block) | Public access block configuration.                                                                                                 | <pre>object({<br> block_public_acls = optional(bool, true)<br> block_public_policy = optional(bool, true)<br> ignore_public_acls = optional(bool, true)<br> restrict_public_buckets = optional(bool, true)<br> })</pre>                                                                                                                                                                                                                                                                                                                                | `null`                                                          |    no    |
+| <a name="input_replication"></a> [replication](#input_replication)                         | Replication configuration.                                                                                                         | <pre>object({<br> role = string<br> rule = object({<br> id = string<br> status = string<br> prefix = optional(string)<br> destination = object({<br> bucket = string<br> storage_class = optional(string)<br> })<br> })<br> })</pre>                                                                                                                                                                                                                                                                                                                   | `null`                                                          |    no    |
+| <a name="input_tags"></a> [tags](#input_tags)                                              | A map of tags to assign to the bucket.                                                                                             | `map(string)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `{}`                                                            |    no    |
+| <a name="input_versioning"></a> [versioning](#input_versioning)                            | Versioning configuration for the bucket.                                                                                           | <pre>object({<br> enabled = bool<br> mfa_delete = optional(bool, false)<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | <pre>{<br> "enabled": false,<br> "mfa_delete": false<br>}</pre> |    no    |
+| <a name="input_website"></a> [website](#input_website)                                     | Static website hosting configuration.                                                                                              | <pre>object({<br> index_document = string<br> error_document = optional(string)<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `null`                                                          |    no    |
 
-You can manually trigger the workflow:
+## Outputs
 
-1. Go to the **Actions** tab in your repository
-2. Select the **Publish Terraform Module to S3** workflow
-3. Click on **Run workflow**
-4. Optionally specify a version or region
+| Name                                                                                                                 | Description                                                 |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| <a name="output_bucket_arn"></a> [bucket_arn](#output_bucket_arn)                                                    | The ARN of the bucket.                                      |
+| <a name="output_bucket_domain_name"></a> [bucket_domain_name](#output_bucket_domain_name)                            | The bucket domain name.                                     |
+| <a name="output_bucket_id"></a> [bucket_id](#output_bucket_id)                                                       | The name of the bucket.                                     |
+| <a name="output_bucket_regional_domain_name"></a> [bucket_regional_domain_name](#output_bucket_regional_domain_name) | The regional domain name of the bucket.                     |
+| <a name="output_versioning"></a> [versioning](#output_versioning)                                                    | The versioning state of the bucket.                         |
+| <a name="output_website_endpoint"></a> [website_endpoint](#output_website_endpoint)                                  | The website endpoint, if static website hosting is enabled. |
 
-## Terraform Documentation Automation
+## Resources
 
-This repository is set up to automatically generate documentation using `terraform-docs`.
+| Name                                                                                                                                                                                  | Type     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| [aws_kms_alias.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias)                                                                           | resource |
+| [aws_kms_key.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key)                                                                               | resource |
+| [aws_s3_bucket.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket)                                                                           | resource |
+| [aws_s3_bucket_acl.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_acl)                                                                   | resource |
+| [aws_s3_bucket_notification.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification)                                                 | resource |
+| [aws_s3_bucket_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy)                                                             | resource |
+| [aws_s3_bucket_public_access_block.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block)                                   | resource |
+| [aws_s3_bucket_replication_configuration.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_replication_configuration)                       | resource |
+| [aws_s3_bucket_server_side_encryption_configuration.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
 
-### How to Use Terraform-docs
+<!-- END_TF_DOCS -->` tags.
 
-1. Install terraform-docs:
+Make sure to adjust the command and options according to your specific needs.
 
-```bash
-brew install terraform-docs    # macOS
+## Diagram:
 
-# For Windows:
-# Option 1: Using Chocolatey
-choco install terraform-docs
+![Diagram](.docs/diagram.png)
 
-# Option 2: Using Scoop
-scoop install terraform-docs
+## Example:
 
-# Option 3: Manual installation
-# Download the latest Windows binary from https://github.com/terraform-docs/terraform-docs/releases
-# Extract it and add to your PATH
+```hcl
+
 ```
 
-2. Create a `.config/.terraform-docs.yml` configuration file with your preferred settings
-3. Run the following command to update the README:
+## Inputs
 
-```bash
-terraform-docs --config .config/.terraform-docs.yml .
-```
+| Name                                                                                       | Description                                                                                                               | Type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Default                              | Required |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ | :------: |
+| <a name="input_acl"></a> [acl](#input_acl)                                                 | The canned ACL to apply. Defaults to private. (Deprecated, use access_control instead if possible)                        | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `"private"`                          |    no    |
+| <a name="input_bucket_name"></a> [bucket_name](#input_bucket_name)                         | The name of the S3 bucket. Must be globally unique.                                                                       | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | n/a                                  |   yes    |
+| <a name="input_create_kms_key"></a> [create_kms_key](#input_create_kms_key)                | If true, create a customer managed KMS key for S3 bucket encryption.                                                      | `bool`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `false`                              |    no    |
+| <a name="input_encryption"></a> [encryption](#input_encryption)                            | Server-side encryption configuration. If using a customer managed KMS key, this will be set automatically.                | <pre>object({<br> sse_algorithm = string<br> kms_master_key_id = optional(string)<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `null`                               |    no    |
+| <a name="input_force_destroy"></a> [force_destroy](#input_force_destroy)                   | A boolean that indicates all objects should be deleted from the bucket so that the bucket can be destroyed without error. | `bool`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `false`                              |    no    |
+| <a name="input_kms_key_alias"></a> [kms_key_alias](#input_kms_key_alias)                   | Alias for the customer managed KMS key (if created).                                                                      | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `null`                               |    no    |
+| <a name="input_kms_key_description"></a> [kms_key_description](#input_kms_key_description) | Description for the customer managed KMS key (if created).                                                                | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `"KMS key for S3 bucket encryption"` |    no    |
+| <a name="input_lifecycle_rules"></a> [lifecycle_rules](#input_lifecycle_rules)             | A list of lifecycle rules for objects in the bucket.                                                                      | <pre>list(object({<br> id = optional(string)<br> enabled = optional(bool, true)<br> prefix = optional(string)<br> tags = optional(map(string))<br> transitions = optional(list(object({<br> days = number<br> storage_class = string<br> })), [])<br> expiration = optional(list(object({<br> days = number<br> })), [])<br> }))</pre>                                                                                                                                                                                                                 | `[]`                                 |    no    |
+| <a name="input_logging"></a> [logging](#input_logging)                                     | Bucket logging configuration.                                                                                             | <pre>object({<br> target_bucket = string<br> target_prefix = optional(string)<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `null`                               |    no    |
+| <a name="input_notifications"></a> [notifications](#input_notifications)                   | Notification configuration for S3 events.                                                                                 | <pre>object({<br> lambda_functions = optional(list(object({<br> arn = string<br> events = list(string)<br> filter_prefix = optional(string)<br> filter_suffix = optional(string)<br> })), [])<br> topics = optional(list(object({<br> arn = string<br> events = list(string)<br> filter_prefix = optional(string)<br> filter_suffix = optional(string)<br> })), [])<br> queues = optional(list(object({<br> arn = string<br> events = list(string)<br> filter_prefix = optional(string)<br> filter_suffix = optional(string)<br> })), [])<br> })</pre> | `null`                               |    no    |
+| <a name="input_policy"></a> [policy](#input_policy)                                        | A valid bucket policy JSON document.                                                                                      | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `null`                               |    no    |
+| <a name="input_public_access_block"></a> [public_access_block](#input_public_access_block) | Public access block configuration.                                                                                        | <pre>object({<br> block_public_acls = optional(bool, true)<br> block_public_policy = optional(bool, true)<br> ignore_public_acls = optional(bool, true)<br> restrict_public_buckets = optional(bool, true)<br> })</pre>                                                                                                                                                                                                                                                                                                                                | `null`                               |    no    |
+| <a name="input_replication"></a> [replication](#input_replication)                         | Replication configuration.                                                                                                | <pre>object({<br> role = string<br> rule = object({<br> id = string<br> status = string<br> prefix = optional(string)<br> destination = object({<br> bucket = string<br> storage_class = optional(string)<br> })<br> })<br> })</pre>                                                                                                                                                                                                                                                                                                                   | `null`                               |    no    |
+| <a name="input_tags"></a> [tags](#input_tags)                                              | A map of tags to assign to the bucket.                                                                                    | `map(string)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `{}`                                 |    no    |
+| <a name="input_versioning_enabled"></a> [versioning_enabled](#input_versioning_enabled)    | Enable versioning for the bucket.                                                                                         | `bool`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `false`                              |    no    |
+| <a name="input_website"></a> [website](#input_website)                                     | Static website hosting configuration.                                                                                     | <pre>object({<br> index_document = string<br> error_document = optional(string)<br> })</pre>                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `null`                               |    no    |
 
-4. Documentation will be inserted between the `<!-- BEGIN_TF_DOCS -->` and `<!-- END_TF_DOCS -->` markers in this README (It will replace this existing content in the repo template).
+## Outputs
+
+| Name                                                                                                                 | Description                                                 |
+| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| <a name="output_bucket_arn"></a> [bucket_arn](#output_bucket_arn)                                                    | The ARN of the bucket.                                      |
+| <a name="output_bucket_domain_name"></a> [bucket_domain_name](#output_bucket_domain_name)                            | The bucket domain name.                                     |
+| <a name="output_bucket_id"></a> [bucket_id](#output_bucket_id)                                                       | The name of the bucket.                                     |
+| <a name="output_bucket_regional_domain_name"></a> [bucket_regional_domain_name](#output_bucket_regional_domain_name) | The regional domain name of the bucket.                     |
+| <a name="output_versioning"></a> [versioning](#output_versioning)                                                    | The versioning state of the bucket.                         |
+| <a name="output_website_endpoint"></a> [website_endpoint](#output_website_endpoint)                                  | The website endpoint, if static website hosting is enabled. |
+
+## Resources
+
+| Name                                                                                                                                                                                  | Type     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| [aws_kms_alias.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_alias)                                                                           | resource |
+| [aws_kms_key.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key)                                                                               | resource |
+| [aws_s3_bucket.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket)                                                                           | resource |
+| [aws_s3_bucket_acl.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_acl)                                                                   | resource |
+| [aws_s3_bucket_notification.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_notification)                                                 | resource |
+| [aws_s3_bucket_policy.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_policy)                                                             | resource |
+| [aws_s3_bucket_public_access_block.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block)                                   | resource |
+| [aws_s3_bucket_replication_configuration.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_replication_configuration)                       | resource |
+| [aws_s3_bucket_server_side_encryption_configuration.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_server_side_encryption_configuration) | resource |
+
+<!-- END_TF_DOCS -->` markers in this README (It will replace this existing content in the repo template).
 
 ## Getting Started
 

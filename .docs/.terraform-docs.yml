@@ -10,7 +10,7 @@ recursive:
 content: |-
   {{ .Header}}
   ## Diagram:
-  ![Diagram](.doc/diagram.png)
+  ![Diagram](.docs/diagram.png)
 
 
   ## Example:

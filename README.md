@@ -25,7 +25,7 @@ terraform-docs --config .docs/.terraform-docs.yml .
 <!-- BEGIN_TF_DOCS -->
 
 ## Diagram:
-![Diagram](.doc/diagram.png)
+![Diagram](.docs/diagram.png)
 
 
 ## Example:

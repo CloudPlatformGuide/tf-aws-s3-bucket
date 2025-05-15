@@ -9,11 +9,6 @@ variable "force_destroy" {
   default     = false
 }
 
-variable "acl" {
-  description = "The canned ACL to apply. Defaults to private. (Deprecated, use access_control instead if possible)"
-  type        = string
-  default     = "private"
-}
 
 variable "tags" {
   description = "A map of tags to assign to the bucket."
@@ -58,10 +53,6 @@ variable "logging" {
     target_prefix = optional(string, "")
   })
   default = null
-  validation {
-    condition     = var.logging == null || length(var.logging.target_bucket) > 0
-    error_message = "Target bucket is required when logging is enabled."
-  }
 }
 
 variable "website" {

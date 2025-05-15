@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""
+S3 Bucket Module Diagram Generator
+
+This script generates a diagram of the AWS S3 bucket module and its related 
+resources using the diagrams Python package.
+
+Usage:
+    python s3.py
+
+Requirements:
+    - diagrams package (pip install diagrams)
+    - graphviz (system dependency)
+"""
+
+from diagrams import Cluster, Diagram, Edge
+from diagrams.aws.storage import S3, S3Glacier
+from diagrams.aws.security import KMS, IAM, Shield
+from diagrams.aws.integration import SimpleNotificationServiceSns, SQS, Eventbridge
+from diagrams.aws.compute import Lambda
+from diagrams.aws.management import Cloudwatch
+from diagrams.aws.general import Users
+from diagrams.aws.network import CloudFront, Route53
+
+# Graph attributes for better layout
+graph_attr = {
+    "fontsize": "32",
+    "fontcolor": "#2D3436",
+    "bgcolor": "white",
+    "margin": "0,0",
+    "pad": "1.0",
+    "splines": "ortho",
+    "nodesep": "0.60",
+    "ranksep": "0.75",
+    "fontname": "Arial",
+    "concentrate": "true",
+    "labelloc": "t",
+}
+
+# Node attributes for consistent styling
+node_attr = {
+    "shape": "box",
+    "style": "rounded",
+    "fixedsize": "true",
+    "width": "2.2",
+    "height": "2.2",
+    "labelloc": "b",  # Position labels below the nodes
+    "imagescale": "true",
+    "fontname": "Arial",
+    "fontsize": "12",
+    "fontcolor": "#2D3436",
+}
+
+# Edge attributes
+edge_attr = {
+    "color": "#7B8894",
+    "penwidth": "2.0",
+    "fontname": "Arial",
+    "fontsize": "10",
+}
+
+def create_s3_module_diagram():
+    """
+    Create and save the S3 module architecture diagram.
+    """
+    
+    title = "AWS S3 Bucket Module Architecture"
+    
+    with Diagram(
+        title,
+        filename="s3_module_diagram",
+        outformat="png",
+        show=False,
+        direction="TB",
+        graph_attr=graph_attr,
+        node_attr=node_attr,
+        edge_attr=edge_attr,
+    ):
+        # Users/Applications accessing the bucket
+        users = Users("Client\nApplications")
+        
+        with Cluster("AWS Account"):
+            # The main S3 Bucket with its configurations
+            with Cluster("S3 Bucket Module"):
+                main_bucket = S3("Primary S3 Bucket")
+                
+                # Core configuration elements
+                with Cluster("Bucket Configuration"):
+                    # Security
+                    with Cluster("Security Configuration"):
+                        # Server-side Encryption
+                        kms = KMS("KMS Key\n(Optional)")
+                        
+                        # Public Access Block
+                        public_block = Shield("Public Access\nBlocking")
+                    
+                    # Policy and ACL controls
+                    policy = IAM("Bucket Policy\n& ACLs")
+                    
+                    # Versioning
+                    versioning_attr = Edge(
+                        label="Versioning\nEnabled/MFA Delete", 
+                        style="dotted",
+                        color="darkgreen"
+                    )
+                
+                # Lifecycle Management
+                with Cluster("Lifecycle Rules"):
+                    lifecycle = Eventbridge("Lifecycle Rules")
+                    glacier = S3Glacier("Glacier/Deep Archive\nTransitions")
+                    expiration = Edge(label="Object\nExpiration", style="dotted", color="red")
+                    
+                    # Connect lifecycle to glacier and expiration
+                    lifecycle >> glacier
+                    lifecycle >> expiration
+                
+                # Website Hosting (if enabled)
+                with Cluster("Static Website (Optional)"):
+                    website = CloudFront("Website Hosting")
+                    dns = Route53("Custom Domain\n(Optional)")
+                    
+                    dns >> website
+            
+            # External Integrations
+            # Notification resources
+            with Cluster("Event Notifications (Optional)"):
+                lambda_fn = Lambda("Lambda\nFunction")
+                sns = SimpleNotificationServiceSns("SNS\nTopic")
+                sqs = SQS("SQS\nQueue")
+            
+            # Log bucket for access logging
+            log_bucket = S3("Logging Bucket\n(Optional)")
+            
+            # Replication target
+            with Cluster("Replication (Optional)"):
+                replica_bucket = S3("Replica\nS3 Bucket")
+            
+            # Monitoring
+            cloudwatch = Cloudwatch("CloudWatch\nMetrics & Alarms")
+
+        # Connect resources
+        users >> Edge(label="CRUD Operations") >> main_bucket
+        
+        # Security connections
+        kms >> Edge(label="Encrypts Data", style="dashed") >> main_bucket
+        public_block - Edge(label="Protects") - main_bucket
+        policy - Edge(label="Controls Access") - main_bucket
+        main_bucket - versioning_attr
+        
+        # Lifecycle connections  
+        lifecycle - Edge(label="Manages") - main_bucket
+        
+        # Website connections
+        main_bucket - Edge(label="Hosts") - website
+        
+        # Notifications
+        main_bucket >> Edge(label="Object\nEvents") >> lambda_fn
+        main_bucket >> Edge(label="Object\nEvents") >> sns
+        main_bucket >> Edge(label="Object\nEvents") >> sqs
+        
+        # Logging
+        main_bucket >> Edge(label="Access\nLogs") >> log_bucket
+        
+        # Replication
+        main_bucket >> Edge(label="Replicates To", style="bold") >> replica_bucket
+        
+        # Monitoring
+        main_bucket - Edge(label="Metrics", style="dotted") - cloudwatch
+
+if __name__ == "__main__":
+    # Create the diagram
+    create_s3_module_diagram()

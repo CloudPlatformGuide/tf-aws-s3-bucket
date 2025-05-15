@@ -4,54 +4,60 @@
 resource "aws_s3_bucket" "this" {
   bucket        = var.bucket_name
   force_destroy = var.force_destroy
-  # acl           = var.acl
-  tags = var.tags
+  tags          = var.tags
 
-  dynamic "versioning" {
-    for_each = [var.versioning]
-    content {
-      enabled    = versioning.value.enabled
-      mfa_delete = versioning.value.mfa_delete
-    }
-  }
+}
 
-  dynamic "lifecycle_rule" {
+resource "aws_s3_bucket_lifecycle_configuration" "this" {
+  count  = length(var.lifecycle_rules) > 0 ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+  dynamic "rule" {
     for_each = var.lifecycle_rules
     content {
-      id      = lookup(lifecycle_rule.value, "id", null)
-      enabled = lookup(lifecycle_rule.value, "enabled", true)
-      prefix  = lookup(lifecycle_rule.value, "prefix", null)
-      tags    = lookup(lifecycle_rule.value, "tags", null)
+      status = lookup(rule.value, "enabled", true)
+      id     = lookup(rule.value, "id", null)
       dynamic "transition" {
-        for_each = lookup(lifecycle_rule.value, "transitions", [])
+        for_each = lookup(rule.value, "transitions", [])
         content {
           days          = lookup(transition.value, "days", null)
           storage_class = lookup(transition.value, "storage_class", null)
         }
       }
       dynamic "expiration" {
-        for_each = lookup(lifecycle_rule.value, "expiration", [])
+        for_each = lookup(rule.value, "expiration", [])
         content {
           days = lookup(expiration.value, "days", null)
         }
       }
     }
-  }
 
-  dynamic "logging" {
-    for_each = var.logging != null ? [var.logging] : []
-    content {
-      target_bucket = logging.value.target_bucket
-      target_prefix = lookup(logging.value, "target_prefix", null)
-    }
   }
+}
 
-  dynamic "website" {
-    for_each = var.website != null ? [var.website] : []
-    content {
-      index_document = website.value.index_document
-      error_document = lookup(website.value, "error_document", null)
-    }
+resource "aws_s3_bucket_logging" "this" {
+  count         = var.logging != null ? 1 : 0
+  bucket        = aws_s3_bucket.this.id
+  target_bucket = var.logging.target_bucket
+  target_prefix = lookup(var.logging, "target_prefix", null)
+}
+
+resource "aws_s3_bucket_versioning" "this" {
+  count  = var.versioning != null ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+  versioning_configuration {
+    status     = var.versioning.enabled ? "Enabled" : "Suspended"
+    mfa_delete = var.versioning.mfa_delete ? "Enabled" : "Disabled"
+  }
+}
+
+resource "aws_s3_bucket_website_configuration" "this" {
+  count  = var.website != null ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+  index_document {
+    suffix = var.website.index_document
+  }
+  error_document {
+    key = lookup(var.website, "error_document", null)
   }
 }
 
@@ -74,12 +80,6 @@ locals {
     sse_algorithm     = "aws:kms"
     kms_master_key_id = aws_kms_key.this[0].arn
   } : var.encryption
-}
-
-resource "aws_s3_bucket_acl" "this" {
-  count  = var.acl != null ? 1 : 0
-  bucket = aws_s3_bucket.this.id
-  acl    = var.acl
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {

@@ -5,7 +5,6 @@ resource "aws_s3_bucket" "this" {
   bucket        = var.bucket_name
   force_destroy = var.force_destroy
   tags          = var.tags
-
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
@@ -59,6 +58,31 @@ resource "aws_s3_bucket_website_configuration" "this" {
   error_document {
     key = lookup(var.website, "error_document", null)
   }
+  routing_rule {
+    condition {
+      key_prefix_equals = "/"
+    }
+    redirect {
+      replace_key_prefix_with = "index.html"
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "website" {
+  count  = var.website != null ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.this.arn}/*"
+      }
+    ]
+  })
+  depends_on = [aws_s3_bucket_public_access_block.this]
 }
 
 resource "aws_kms_key" "this" {
@@ -76,6 +100,7 @@ resource "aws_kms_alias" "this" {
 }
 
 locals {
+  # Determine S3 bucket kms key based on whether a customer managed key is created
   effective_encryption = var.create_kms_key ? {
     sse_algorithm     = "aws:kms"
     kms_master_key_id = aws_kms_key.this[0].arn

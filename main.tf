@@ -1,6 +1,8 @@
 # Terraform module to create an S3 bucket with various configurations
 # including versioning, encryption, logging, and notifications.
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket" "this" {
   bucket        = var.bucket_name
   force_destroy = var.force_destroy
@@ -68,23 +70,6 @@ resource "aws_s3_bucket_website_configuration" "this" {
   }
 }
 
-resource "aws_s3_bucket_policy" "website" {
-  count  = var.website != null ? 1 : 0
-  bucket = aws_s3_bucket.this.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = "*"
-        Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.this.arn}/*"
-      }
-    ]
-  })
-  depends_on = [aws_s3_bucket_public_access_block.this]
-}
-
 resource "aws_kms_key" "this" {
   count                   = var.create_kms_key ? 1 : 0
   description             = var.kms_key_description
@@ -116,12 +101,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
       kms_master_key_id = lookup(local.effective_encryption, "kms_master_key_id", null)
     }
   }
-}
-
-resource "aws_s3_bucket_policy" "this" {
-  count  = var.policy != null ? 1 : 0
-  bucket = aws_s3_bucket.this.id
-  policy = var.policy
 }
 
 resource "aws_s3_bucket_public_access_block" "this" {
@@ -181,3 +160,86 @@ resource "aws_s3_bucket_notification" "this" {
     }
   }
 }
+
+
+
+
+# Create individual policy documents
+
+locals {
+  # Determine if we need to create a policy - this is known at plan time
+  has_policies = (var.policy != null || var.website != null || var.is_logging_bucket != null)
+
+}
+
+### Base Policy Document
+data "aws_iam_policy_document" "base_policy" {
+  count = var.policy != null ? 1 : 0
+  # Use the provided policy as a base
+  source_policy_documents = [var.policy]
+}
+
+## Bucket Website Policy
+data "aws_iam_policy_document" "website" {
+  count = var.website != null ? 1 : 0
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.this.arn}/*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+  }
+}
+
+### S3 Bucket Logging Policy
+data "aws_iam_policy_document" "logging" {
+  count = var.is_logging_bucket ? 1 : 0
+  statement {
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${var.bucket_name}/*"]
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
+# Combine policies using source_policy_documents approach
+data "aws_iam_policy_document" "combined_policy" {
+  count = local.has_policies ? 1 : 0
+
+  # Ensure at least one valid statement exists
+  statement {
+    sid       = "DefaultStatement"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.this.arn]
+    principals {
+      type        = "AWS"
+      identifiers = [data.aws_caller_identity.current.arn]
+    }
+  }
+
+  # Combine the policies into a single document, removing null values with compact
+  source_policy_documents = compact([
+    var.policy != null ? var.policy : null,
+    var.website != null ? data.aws_iam_policy_document.website[0].json : null,
+    var.is_logging_bucket ? data.aws_iam_policy_document.logging[0].json : null,
+    # Add more policy documents here as needed
+  ])
+}
+
+
+# Use the policy with S3 bucket, if null no S3 bucket policy is created
+resource "aws_s3_bucket_policy" "bucket_policy" {
+  count  = local.has_policies ? 1 : 0
+  bucket = aws_s3_bucket.this.id
+  policy = data.aws_iam_policy_document.combined_policy[0].json
+}
+

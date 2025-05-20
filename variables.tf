@@ -4,7 +4,7 @@ variable "bucket_name" {
 }
 
 variable "force_destroy" {
-  description = "A boolean that indicates all objects should be deleted from the bucket so that the bucket can be destroyed without error."
+  description = "A boolean that indicates all objects should be deleted from the bucket so that the bucket can be destroyed without error. WARNING: This will delete all objects in the bucket."
   type        = bool
   default     = false
 }
@@ -44,6 +44,12 @@ variable "lifecycle_rules" {
     })), [])
   }))
   default = []
+}
+
+variable "is_logging_bucket" {
+  description = "Indicates if the bucket is used for logging. If true, the bucket will be created with a logging S3 bucket policy."
+  type        = bool
+  default     = false
 }
 
 variable "logging" {
